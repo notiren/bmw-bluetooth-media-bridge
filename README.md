@@ -34,9 +34,9 @@ Buttons". Volume stays with the factory radio.
 | Car GND | Buck IN− | |
 | Buck 5 V | MCP2515 VCC, C3 `5V` | Buck 3.3 V output not used |
 | Buck GND | MCP2515 GND, C3 GND | Common ground |
-| C3 GPIO7 | MCP2515 CS | Direct |
-| C3 GPIO4 | MCP2515 SCK | Direct |
+| C3 GPIO4 | MCP2515 CS | Direct |
 | C3 GPIO6 | MCP2515 SI | Direct |
+| C3 GPIO7 | MCP2515 SCK | Direct |
 | MCP2515 SO | C3 GPIO5 via 2.2 kΩ | Plus 3.3 kΩ from GPIO5 to GND (5 V → 3.3 V divider) |
 | MCP2515 INT | — | Not used |
 | MCP2515 CANH | K-CAN high (green) | Behind the radio |
