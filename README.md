@@ -71,7 +71,8 @@ PlatformIO project. Environments used for this build:
 | Env | Purpose |
 |---|---|
 | `logger_esp32c3_mcp2515` | Listen-only CAN logger (test first) |
-| `app_ble_esp32c3_mcp2515` | Steering wheel → BLE media keys |
+| `app_ble_esp32c3_mcp2515` | Steering wheel → BLE media keys + Wi-Fi dashboard |
+| `app_ble_esp32c3_mcp2515_ota` | Same firmware, uploaded over Wi-Fi (OTA) |
 
 ``` powershell
 pio run -e logger_esp32c3_mcp2515 -t upload
@@ -111,10 +112,52 @@ Other environments (not used in this build):
 | Vol + | 0 | 0x08 | `C8 0C` | (factory radio) |
 | Vol − | 0 | 0x04 | `C4 0C` | (factory radio) |
 | Telephone | 0 | 0x01 | `C1 0C` | Play/Pause |
-| Voice | 1 | 0x01 | `C0 0D` | Play/Pause |
+| Voice | 1 | 0x01 | `C0 0D` | Play/Pause; hold 2 s = Wi-Fi on/off |
 
 byte0 = `0xFF` is a fault frame and is ignored. Each physical press sends
 one command. The table lives in `src/common/mfl.cpp`.
+
+### Wi-Fi dashboard and OTA
+
+`app_ble_esp32c3_mcp2515` also serves a live dashboard (speed, RPM,
+coolant, outside temp, battery, fuel, range, last steering button) and
+accepts wireless firmware updates. Wi-Fi is **off** at startup to keep
+the C3 cool: **hold Voice for 2 s** to turn it on or off (a short press is
+still Play/Pause, sent on release). It also turns off by itself after
+10 min without anyone using the dashboard. On the bench, typing `w` in
+the serial monitor does the same. The code is in
+`src/app_ble/dashboard.*`. Build with `-DENABLE_DASHBOARD=0` (remove the
+flag in `platformio.ini`) for a BLE-only firmware.
+
+1.  Copy `include/secrets.example.h` to `include/secrets.h` (git-ignored)
+    and set the network name/password (`""` = open network) and the OTA
+    password. Without this
+    file the firmware still builds, but Wi-Fi stays off.
+2.  Flash once over USB. Hold Voice 2 s (or type `w` in the serial
+    monitor) and watch for `WiFi: on, network "BMW E92 Dash" at
+    http://192.168.4.1`.
+3.  On the phone join **BMW E92 Dash**, open `http://192.168.4.1` and use
+    Share → Add to Home Screen.
+
+The C3's network offers no internet gateway, so the phone keeps using
+mobile data for everything else (maps, music) while connected to it. No
+phone hotspot is needed.
+
+The decodings in `src/common/kcan_dash.cpp` are **not verified** on the
+car yet. Use the **raw** button on the page to see the frame bytes and
+fix the formulas if needed. Values with no recent frames are dimmed.
+
+Firmware update without USB (turn Wi-Fi on and join **BMW E92 Dash** with
+the Mac first):
+
+``` sh
+pio run -e app_ble_esp32c3_mcp2515_ota -t upload
+```
+
+Or tap **update** in the dashboard's status bar
+(`http://192.168.4.1/update`, user `admin`, password `OTA_PASSWORD`) and
+upload `.pio/build/app_ble_esp32c3_mcp2515/firmware.bin`, e.g. sent to
+the phone via AirDrop.
 
 ### Build setup (Windows)
 
@@ -156,23 +199,8 @@ or the VS Code PlatformIO extension works without this.
     Bluetooth-AUX receiver, no buck converter needed). This keeps the
     C3's micro-USB port reachable for reflashing; run the twisted K-CAN pair
     (~1 m) from behind the radio.
-6.  **Live dashboard over Wi-Fi.** The C3 runs a Wi-Fi hotspot and
-    serves a web page, opened on the phone in its holder. Plan:
-    -   Decode extra K-CAN values (to be confirmed with the logger):
-        battery voltage `0x3B4`, coolant temp `0x1D0`, outside temp
-        `0x2CA`, speed `0x1B4`, RPM `0x0AA`, fuel level `0x349`, range
-        `0x366`.
-    -   Page stored on the C3, live updates several times per second
-        without reloading, dark theme, large numbers, landscape layout.
-        Save to the home screen so it opens like an app.
-    -   Access via the C3's own hotspot at a fixed address, e.g.
-        `http://192.168.4.1` (on Android choose "stay connected" when
-        warned about no internet). Alternative: the C3 joins the phone's
-        personal hotspot, which keeps mobile data working.
-    -   Wi-Fi and BLE share the C3's single radio; fine for button
-        presses plus a dashboard.
-7.  Wireless firmware updates (OTA) over the same Wi-Fi, so reflashing no
-    longer needs USB.
+6.  Verify the dashboard values in the car with the **raw** view and
+    correct `src/common/kcan_dash.cpp` where needed.
 
 ## References
 

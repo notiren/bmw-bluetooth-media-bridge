@@ -5,14 +5,22 @@
 // Bluetooth Classic and therefore cannot receive A2DP audio.
 //
 // Pair the phone with "BMW E92 Buttons" from the phone's Bluetooth settings.
+//
+// Optional Wi-Fi dashboard + OTA (dashboard.cpp), enabled with
+// -DENABLE_DASHBOARD=1. Then Voice acts on release: short press = Play/Pause,
+// hold 2 s = Wi-Fi on/off.
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <NimBLEHIDDevice.h>
 #include "../common/can_bus.h"
 #include "../common/mfl.h"
+#include "dashboard.h"
 
 #ifndef CAN_BITRATE
 #define CAN_BITRATE 100000
+#endif
+#ifndef FW_VERSION
+#define FW_VERSION "dev"
 #endif
 #ifndef BLE_DEVICE_NAME
 #define BLE_DEVICE_NAME "BMW E92 Buttons"
@@ -48,6 +56,23 @@ static const uint8_t kReportMap[] = {
 static NimBLECharacteristic *g_input = nullptr;
 static volatile bool g_connected = false;
 static MflDecoder g_mfl;
+#if ENABLE_DASHBOARD
+static KcanDash g_dash;
+static constexpr uint32_t kVoiceHoldMs = 2000;
+static bool g_voicePending = false;
+static uint32_t g_voiceDownMs = 0;
+#endif
+
+// CAN is read in its own task so Bluetooth and Wi-Fi work in loop() cannot
+// make the controller's small receive buffer overflow.
+static QueueHandle_t g_canQueue = nullptr;
+
+static void canTask(void *) {
+    CanFrame f;
+    for (;;) {
+        if (canRead(f, 5)) xQueueSend(g_canQueue, &f, 0);
+    }
+}
 
 class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer *) override {
@@ -97,7 +122,7 @@ static void sendKey(uint8_t key) {
     g_input->notify();
 }
 
-static void handlePress(MflButton b) {
+static void runAction(MflButton b) {
     uint8_t key = 0;
     switch (b) {
         case MFL_NEXT: key = KEY_NEXT; break;
@@ -108,29 +133,92 @@ static void handlePress(MflButton b) {
     }
     Serial.printf("MFL %s -> BLE key 0x%02X%s\n", mflButtonName(b), key,
                   g_connected ? "" : " (no phone connected)");
+#if ENABLE_DASHBOARD
+    dashboardNoteButton(mflButtonName(b));
+#endif
     sendKey(key);
+}
+
+static void handlePress(MflButton b, uint32_t now) {
+#if ENABLE_DASHBOARD
+    if (b == MFL_VOICE) {  // decided on release or after the hold time
+        g_voicePending = true;
+        g_voiceDownMs = now;
+        return;
+    }
+#endif
+    runAction(b);
+}
+
+#if ENABLE_DASHBOARD
+static void voiceHoldCheck(uint32_t now) {
+    if (!g_voicePending) return;
+    const bool held = g_mfl.heldMask() & (1 << MFL_VOICE);
+    if (held && now - g_voiceDownMs >= kVoiceHoldMs) {
+        g_voicePending = false;
+        dashboardToggleWifi();
+        dashboardNoteButton(dashboardWifiOn() ? "WIFI ON" : "WIFI OFF");
+    } else if (!held) {
+        g_voicePending = false;
+        runAction(MFL_VOICE);
+    }
+}
+#endif
+
+// Bench test over the serial monitor: n/p/t = Next/Previous/Play-Pause,
+// w = Wi-Fi on/off (dashboard builds).
+static void benchCommands() {
+    if (!Serial.available()) return;
+    switch (Serial.read()) {
+        case 'n': runAction(MFL_NEXT); break;
+        case 'p': runAction(MFL_PREV); break;
+        case 't': runAction(MFL_PHONE); break;
+#if ENABLE_DASHBOARD
+        case 'w': dashboardToggleWifi(); break;
+#endif
+        default: break;
+    }
 }
 
 void setup() {
     Serial.begin(115200);
     delay(500);
+    Serial.println("Firmware v" FW_VERSION);
     bleBegin();
     if (!canBegin(CAN_BITRATE)) {
         Serial.println("!! CAN init failed");
     } else {
         Serial.printf("CAN: %s @ %lu bit/s listen-only\n", canBackendName(),
                       (unsigned long)CAN_BITRATE);
+        g_canQueue = xQueueCreate(64, sizeof(CanFrame));
+        xTaskCreate(canTask, "can", 4096, nullptr, 2, nullptr);
     }
+#if ENABLE_DASHBOARD
+    dashboardBegin(g_dash, g_connected);
+#endif
 }
 
 void loop() {
     CanFrame f;
-    const uint32_t now = millis();
-    if (canRead(f, 10)) {
+    // Wait briefly for the first frame, then drain what is queued (bounded so
+    // Wi-Fi/web work still runs on a busy bus).
+    TickType_t wait = pdMS_TO_TICKS(10);
+    for (int n = 0; n < 64 && g_canQueue && xQueueReceive(g_canQueue, &f, wait) == pdTRUE; ++n) {
+        wait = 0;
+        const uint32_t now = millis();
         const uint8_t pressed = g_mfl.update(f, now);
         for (uint8_t i = 0; i < MFL_BUTTON_COUNT; ++i) {
-            if (pressed & (1 << i)) handlePress((MflButton)i);
+            if (pressed & (1 << i)) handlePress((MflButton)i, now);
         }
+#if ENABLE_DASHBOARD
+        g_dash.update(f, now);
+#endif
     }
-    g_mfl.tick(now);
+    if (!g_canQueue) delay(10);
+    g_mfl.tick(millis());
+    benchCommands();
+#if ENABLE_DASHBOARD
+    voiceHoldCheck(millis());
+    dashboardLoop();
+#endif
 }
