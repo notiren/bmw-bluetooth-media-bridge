@@ -18,6 +18,19 @@ Phone ─A2DP─► Bluetooth-to-AUX receiver ─► AUX ─► car speakers
 The phone pairs with two devices: the audio receiver and "BMW E92
 Buttons". Volume stays with the factory radio.
 
+Current firmware: **1.4** (see [Changelog](#changelog)).
+
+## Supported cars
+
+| Car | Status |
+|---|---|
+| E9x (E90/E91/E92/E93) | Verified in an E92 |
+| E8x (E81/E82/E87/E88) | Expected to work (same K-CAN and 0x1D6 buttons), not tested yet |
+
+Needs the multifunction steering wheel. Dashboard values may differ per
+model; check them with the **raw** view. Tested it in an E8x or another
+E9x body? Open an issue with the result.
+
 ## Hardware
 
 -   ESP32-C3-DevKitM-1 (ESP32-C3-MINI-1, micro-USB via CP2102)
@@ -244,6 +257,14 @@ a plain USB adapter. With more than one serial device, pick the port with
     emulation.
 -   Kit hardware: custom PCB with protected 12 V input (fuse, reverse
     polarity, TVS) and sleep or ignition-switched power.
+
+## Changelog
+
+-   **1.4**: CAN sniffer page, MCP2515 INT on GPIO10 with diagnostics,
+    80 MHz CPU and lower Wi-Fi power (runs cooler), macOS build setup.
+-   **1.3**: Wi-Fi dashboard and OTA updates; hold Voice 2 s to toggle
+    Wi-Fi; CAN reading in its own task.
+-   Earlier: ESP32-C3-DevKitM-1 support, MCP2515 pins on GPIO4–7.
 
 ## References
 
