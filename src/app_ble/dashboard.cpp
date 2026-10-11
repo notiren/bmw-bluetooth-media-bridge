@@ -55,6 +55,64 @@ uint32_t g_fps = 0;
 
 bool g_updateAuthorized = false;
 
+// CAN sniffer: one entry per seen ID.
+struct SniffEntry {
+    uint32_t id;
+    bool ext;
+    uint8_t dlc;
+    uint8_t data[8];
+    uint32_t count;
+    uint32_t lastMs;
+    uint32_t changedMs[8];
+};
+constexpr uint16_t kSniffMax = 160;
+constexpr uint32_t kChangedWindowMs = 1000;
+SniffEntry g_sniff[kSniffMax];
+uint16_t g_sniffCount = 0;
+bool g_sniffFull = false;
+
+void handleCanApi() {
+    g_lastUseMs = millis();
+    if (g_server.hasArg("reset")) {
+        g_sniffCount = 0;
+        g_sniffFull = false;
+    }
+    const uint32_t now = millis();
+    String j;
+    j.reserve(64 + g_sniffCount * 48);
+    j += "{\"full\":";
+    j += g_sniffFull ? "true" : "false";
+    {
+        const CanIntStats s = canIntStats();
+        char ib[112];
+        // [has INT, irqs, frames, polled, error clears, pin high]
+        snprintf(ib, sizeof(ib), ",\"int\":[%d,%lu,%lu,%lu,%lu,%d]", s.hasInt ? 1 : 0,
+                 (unsigned long)s.irqs, (unsigned long)s.frames, (unsigned long)s.polled,
+                 (unsigned long)s.errClears, s.pinHigh ? 1 : 0);
+        j += ib;
+    }
+    j += ",\"ids\":[";
+    char buf[96];
+    for (uint16_t i = 0; i < g_sniffCount; ++i) {
+        const SniffEntry &e = g_sniff[i];
+        uint8_t chg = 0;
+        char hex[8 * 2 + 1];
+        for (uint8_t b = 0; b < e.dlc; ++b) {
+            snprintf(hex + b * 2, 3, "%02X", e.data[b]);
+            if (e.changedMs[b] && now - e.changedMs[b] < kChangedWindowMs) chg |= 1 << b;
+        }
+        hex[e.dlc * 2] = 0;
+        // [id, ext, data hex, changed-byte mask, count, age ms]
+        snprintf(buf, sizeof(buf), "%s[%lu,%d,\"%s\",%u,%lu,%lu]", i ? "," : "",
+                 (unsigned long)e.id, e.ext ? 1 : 0, hex, chg, (unsigned long)e.count,
+                 (unsigned long)(now - e.lastMs));
+        j += buf;
+    }
+    j += "]}";
+    g_server.sendHeader("Cache-Control", "no-store");
+    g_server.send(200, "application/json", j);
+}
+
 int32_t ageOf(uint32_t stampMs, bool valid, uint32_t now) {
     return valid ? (int32_t)(now - stampMs) : -1;
 }
@@ -192,6 +250,8 @@ void wifiOn() {
     WiFi.mode(WIFI_AP);
     WiFi.softAP(AP_SSID, sizeof(AP_PASSWORD) > 1 ? AP_PASSWORD : nullptr);
     apNoGateway();
+    // The phone is within a metre or two: low TX power, less heat.
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
     g_lastUseMs = millis();
     g_server.begin();
     otaBegin();
@@ -217,6 +277,8 @@ void dashboardBegin(const KcanDash &dash, const volatile bool &bleConnected) {
 #if DASH_HAVE_SECRETS
     g_server.on("/", HTTP_GET, [] { g_server.send_P(200, "text/html", kDashboardPage); });
     g_server.on("/api", HTTP_GET, handleApi);
+    g_server.on("/can", HTTP_GET, [] { g_server.send_P(200, "text/html", kSnifferPage); });
+    g_server.on("/canapi", HTTP_GET, handleCanApi);
     g_server.on("/update", HTTP_GET, [] {
         if (checkAuth()) g_server.send_P(200, "text/html", kUpdatePage);
     });
@@ -264,6 +326,38 @@ void dashboardLoop() {
     ArduinoOTA.handle();
     g_server.handleClient();
 #endif
+}
+
+void dashboardNoteFrame(const CanFrame &f, uint32_t nowMs) {
+    if (!g_wifiOn || f.rtr) return;
+    const uint8_t dlc = f.dlc > 8 ? 8 : f.dlc;
+    SniffEntry *e = nullptr;
+    for (uint16_t i = 0; i < g_sniffCount; ++i) {
+        if (g_sniff[i].id == f.id && g_sniff[i].ext == f.extended) {
+            e = &g_sniff[i];
+            break;
+        }
+    }
+    if (!e) {
+        if (g_sniffCount >= kSniffMax) {
+            g_sniffFull = true;
+            return;
+        }
+        e = &g_sniff[g_sniffCount++];
+        memset(e, 0, sizeof(*e));
+        e->id = f.id;
+        e->ext = f.extended;
+        e->dlc = dlc;
+        memcpy(e->data, f.data, dlc);
+    } else {
+        for (uint8_t b = 0; b < dlc; ++b) {
+            if (b >= e->dlc || e->data[b] != f.data[b]) e->changedMs[b] = nowMs ? nowMs : 1;
+        }
+        e->dlc = dlc;
+        memcpy(e->data, f.data, dlc);
+    }
+    e->count++;
+    e->lastMs = nowMs;
 }
 
 void dashboardNoteButton(const char *name) {

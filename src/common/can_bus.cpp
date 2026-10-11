@@ -15,7 +15,26 @@
 #define MCP2515_SPI_HZ 1000000
 #endif
 
+// Optional INT pin (active low, through a divider on 5 V modules). With it,
+// canRead() sleeps until a frame arrives instead of polling SPI every 1 ms.
+#ifndef MCP2515_INT_PIN
+#define MCP2515_INT_PIN -1
+#endif
+
 static MCP2515 *s_mcp = nullptr;
+
+#if MCP2515_INT_PIN >= 0
+static SemaphoreHandle_t s_intSem = nullptr;
+static volatile uint32_t s_irqs = 0;
+static uint32_t s_frames = 0, s_polled = 0, s_errClears = 0;
+
+static void IRAM_ATTR onMcpInt() {
+    s_irqs = s_irqs + 1;
+    BaseType_t woken = pdFALSE;
+    xSemaphoreGiveFromISR(s_intSem, &woken);
+    if (woken) portYIELD_FROM_ISR();
+}
+#endif
 
 static bool mapBitrate(uint32_t bitrate, CAN_SPEED &out) {
     switch (bitrate) {
@@ -40,7 +59,15 @@ bool canBegin(uint32_t bitrate) {
     }
     if (s_mcp->reset() != MCP2515::ERROR_OK) return false;
     if (s_mcp->setBitrate(speed, clock) != MCP2515::ERROR_OK) return false;
-    return s_mcp->setListenOnlyMode() == MCP2515::ERROR_OK;
+    if (s_mcp->setListenOnlyMode() != MCP2515::ERROR_OK) return false;
+#if MCP2515_INT_PIN >= 0
+    if (!s_intSem) {
+        s_intSem = xSemaphoreCreateBinary();
+        pinMode(MCP2515_INT_PIN, INPUT_PULLUP);  // pull-up: harmless if INT isn't wired
+        attachInterrupt(digitalPinToInterrupt(MCP2515_INT_PIN), onMcpInt, FALLING);
+    }
+#endif
+    return true;
 }
 
 void canEnd() {
@@ -51,8 +78,15 @@ bool canRead(CanFrame &frame, uint32_t timeoutMs) {
     if (!s_mcp) return false;
     const uint32_t start = millis();
     struct can_frame f;
+#if MCP2515_INT_PIN >= 0
+    bool waitTimedOut = false;
+#endif
     do {
         if (s_mcp->readMessage(&f) == MCP2515::ERROR_OK) {
+#if MCP2515_INT_PIN >= 0
+            ++s_frames;
+            if (waitTimedOut) ++s_polled;
+#endif
             frame.extended = f.can_id & CAN_EFF_FLAG;
             frame.rtr = f.can_id & CAN_RTR_FLAG;
             frame.id = f.can_id & (frame.extended ? CAN_EFF_MASK : CAN_SFF_MASK);
@@ -60,12 +94,37 @@ bool canRead(CanFrame &frame, uint32_t timeoutMs) {
             memcpy(frame.data, f.data, frame.dlc);
             return true;
         }
+#if MCP2515_INT_PIN >= 0
+        // INT low without a frame: error flags; clear them so INT can fire again.
+        if (digitalRead(MCP2515_INT_PIN) == LOW &&
+            (s_mcp->getInterrupts() & (MCP2515::CANINTF_ERRIF | MCP2515::CANINTF_MERRF))) {
+            s_mcp->clearERRIF();
+            s_mcp->clearMERR();
+            ++s_errClears;
+        }
+        const uint32_t elapsed = millis() - start;
+        if (elapsed >= timeoutMs) return false;
+        // Wait for INT; the cap keeps a slow poll going if an edge is missed.
+        const uint32_t waitMs = timeoutMs - elapsed < 10 ? timeoutMs - elapsed : 10;
+        waitTimedOut = xSemaphoreTake(s_intSem, pdMS_TO_TICKS(waitMs)) != pdTRUE;
+    } while (true);
+#else
         if (timeoutMs) delay(1);
     } while (millis() - start < timeoutMs);
     return false;
+#endif
 }
 
 const char *canBackendName() { return "MCP2515"; }
+
+CanIntStats canIntStats() {
+#if MCP2515_INT_PIN >= 0
+    return {s_intSem != nullptr, s_irqs, s_frames, s_polled, s_errClears,
+            digitalRead(MCP2515_INT_PIN) == HIGH};
+#else
+    return {false, 0, 0, 0, 0, true};
+#endif
+}
 
 #else
 
@@ -115,5 +174,7 @@ bool canRead(CanFrame &frame, uint32_t timeoutMs) {
 }
 
 const char *canBackendName() { return "TWAI"; }
+
+CanIntStats canIntStats() { return {false, 0, 0, 0, 0, true}; }
 
 #endif

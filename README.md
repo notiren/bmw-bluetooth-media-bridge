@@ -38,7 +38,7 @@ Buttons". Volume stays with the factory radio.
 | C3 GPIO6 | MCP2515 SI | Direct |
 | C3 GPIO7 | MCP2515 SCK | Direct |
 | MCP2515 SO | C3 GPIO5 via 2.2 kΩ | Plus 3.3 kΩ from GPIO5 to GND (5 V → 3.3 V divider) |
-| MCP2515 INT | — | Not used |
+| MCP2515 INT | C3 GPIO10 via 2.2 kΩ | Optional. Plus 3.3 kΩ from GPIO10 to GND (same divider as SO). Without it the C3 polls instead |
 | MCP2515 CANH | K-CAN high (green) | Behind the radio |
 | MCP2515 CANL | K-CAN low (orange) | Behind the radio |
 
@@ -147,6 +147,18 @@ The decodings in `src/common/kcan_dash.cpp` are **not verified** on the
 car yet. Use the **raw** button on the page to see the frame bytes and
 fix the formulas if needed. Values with no recent frames are dimmed.
 
+Tap **sniffer** (`http://192.168.4.1/can`) to see every K-CAN ID live:
+latest bytes (changed ones highlighted), rate and count, with an ID
+filter, "changed only", pause and reset. Frames are only recorded while
+Wi-Fi is on. The line at the top checks the MCP2515 INT wire: **INT OK**
+means frames arrive by interrupt; "polled" counts frames only caught by
+the 10 ms fallback (a few tenths of a percent is normal). On the bench,
+build with `-DBENCH_FAKE_CAN=1` to feed the dashboard and sniffer with
+fake frames.
+
+To run cooler, the C3 runs at 80 MHz and the Wi-Fi transmit power is
+reduced (plenty for a phone inside the car).
+
 Firmware update without USB (turn Wi-Fi on and join **BMW E92 Dash** with
 the Mac first):
 
@@ -184,23 +196,54 @@ If 8.3 names are disabled on the drive, use any ASCII folder instead,
 e.g. `C:\pio`. With an ASCII user name, a normal `pip install platformio`
 or the VS Code PlatformIO extension works without this.
 
-## Next steps
+### Build setup (macOS)
+
+``` sh
+brew install platformio
+cd e9x-kcan-media-control
+cp include/secrets.example.h include/secrets.h   # then edit it
+pio run -e app_ble_esp32c3_mcp2515
+```
+
+Flash and monitor over USB. The DevKitM-1's CP2102 shows up as
+`/dev/cu.usbserial-*`, and macOS has the driver built in:
+
+``` sh
+pio device list
+pio run -e app_ble_esp32c3_mcp2515 -t upload
+pio device monitor -e app_ble_esp32c3_mcp2515
+```
+
+If the board doesn't show up, use a data cable (not charge-only) and
+avoid a hub's power-only (PD) port; plug it into the Mac directly or via
+a plain USB adapter. With more than one serial device, pick the port with
+`--upload-port /dev/cu.usbserial-XX`.
+
+## Installation
 
 1.  Wire C3 + MCP2515 and flash `logger_esp32c3_mcp2515`.
 2.  Connect to K-CAN behind the radio, ignition on, confirm 0x1D6 frames.
-3.  In `m` mode, press each button and verify the table above. Then type
-    `s` and save the list of CAN IDs seen at the tap point (input for
-    step 6).
+3.  In `m` mode, press each button and verify the table above. Type `s`
+    to list the CAN IDs seen at the tap point.
 4.  Flash `app_ble_esp32c3_mcp2515`. On the phone, open Bluetooth
     settings, pair "BMW E92 Buttons", and test.
-5.  Build a small enclosure (PETG/ABS, not PLA) and mount it behind the
-    radio. Optional: mount it in the armrest console instead, powered by
-    a dual USB adapter in the armrest 12 V socket (shared with the
-    Bluetooth-AUX receiver, no buck converter needed). This keeps the
-    C3's micro-USB port reachable for reflashing; run the twisted K-CAN pair
-    (~1 m) from behind the radio.
-6.  Verify the dashboard values in the car with the **raw** view and
-    correct `src/common/kcan_dash.cpp` where needed.
+5.  Put it in a small enclosure (PETG/ABS, not PLA) behind the radio, or
+    in the armrest console powered by a dual USB adapter in the armrest
+    12 V socket (shared with the Bluetooth-AUX receiver, no buck
+    converter needed). The armrest keeps the C3's micro-USB port
+    reachable; run the twisted K-CAN pair (~1 m) from behind the radio.
+6.  Check the dashboard values with the **raw** view and correct
+    `src/common/kcan_dash.cpp` if any are off.
+
+## Roadmap
+
+-   Classic ESP32 version: Bluetooth audio (A2DP) to a PCM5102A DAC into
+    AUX, buttons via AVRCP, built-in CAN (TWAI) with an SN65HVD230.
+-   Per-car profiles for the whole CAN family (E8x, E9x).
+-   I-Bus family (E46, E39, E53): K-Bus transceiver and CD-changer
+    emulation.
+-   Kit hardware: custom PCB with protected 12 V input (fuse, reverse
+    polarity, TVS) and sleep or ignition-switched power.
 
 ## References
 

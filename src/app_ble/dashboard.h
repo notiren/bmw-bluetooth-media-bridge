@@ -20,5 +20,8 @@ void dashboardBegin(const KcanDash &dash, const volatile bool &bleConnected);
 void dashboardLoop();
 void dashboardNoteButton(const char *name);
 void dashboardToggleWifi();
+// Feed every received CAN frame (for the /can sniffer page; only recorded
+// while Wi-Fi is on).
+void dashboardNoteFrame(const CanFrame &f, uint32_t nowMs);
 bool dashboardWifiOn();
 #endif

@@ -165,6 +165,30 @@ static void voiceHoldCheck(uint32_t now) {
 }
 #endif
 
+#if ENABLE_DASHBOARD && BENCH_FAKE_CAN
+// Bench only (-DBENCH_FAKE_CAN=1): synthetic K-CAN traffic for the dashboard
+// and sniffer pages.
+static void fakeCan(uint32_t now) {
+    static uint32_t last = 0;
+    if (now - last < 50) return;
+    last = now;
+    const uint16_t spd = (uint16_t)((now / 100) % 2000);  // 0..125 km/h * 16
+    const uint16_t rpm = (uint16_t)(3200 + (now / 10) % 12000);
+    const CanFrame frames[] = {
+        {0x1B4, 8, false, false, {(uint8_t)spd, (uint8_t)(0xC0 | (spd >> 8)), 0, 0, 0, 0, 0, 0}},
+        {0x0AA, 8, false, false, {0, 0, 0, 0, (uint8_t)rpm, (uint8_t)(rpm >> 8), 0, 0}},
+        {0x1D0, 8, false, false, {138, 0, 0, 0, 0, 0, 0, 0}},
+        {0x3B4, 8, false, false, {0x40, 0xF3, 0, 0, 0, 0, 0, 0}},
+        {0x1D6, 2, false, false, {0xC0, 0x0C}},
+        {0x130, 5, false, false, {0x45, 0x40, 0x21, 0x8F, (uint8_t)(now / 1000)}},
+    };
+    for (const CanFrame &f : frames) {
+        g_dash.update(f, now);
+        dashboardNoteFrame(f, now);
+    }
+}
+#endif
+
 // Bench test over the serial monitor: n/p/t = Next/Previous/Play-Pause,
 // w = Wi-Fi on/off (dashboard builds).
 static void benchCommands() {
@@ -181,6 +205,8 @@ static void benchCommands() {
 }
 
 void setup() {
+    // 80 MHz is plenty for CAN + BLE (+ Wi-Fi) and runs cooler than 160 MHz.
+    setCpuFrequencyMhz(80);
     Serial.begin(115200);
     delay(500);
     Serial.println("Firmware v" FW_VERSION);
@@ -212,11 +238,15 @@ void loop() {
         }
 #if ENABLE_DASHBOARD
         g_dash.update(f, now);
+        dashboardNoteFrame(f, now);
 #endif
     }
     if (!g_canQueue) delay(10);
     g_mfl.tick(millis());
     benchCommands();
+#if ENABLE_DASHBOARD && BENCH_FAKE_CAN
+    fakeCan(millis());
+#endif
 #if ENABLE_DASHBOARD
     voiceHoldCheck(millis());
     dashboardLoop();

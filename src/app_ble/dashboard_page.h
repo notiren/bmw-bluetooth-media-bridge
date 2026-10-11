@@ -35,7 +35,7 @@ body.raw .r{display:block}
 .bad{color:#e55!important}
 </style></head><body>
 <div id="g"></div>
-<div id="s"><span>Wi-Fi <b id="net">–</b></span><span>BLE <b id="ble">–</b></span><span>CAN <b id="can">–</b></span><span class="sp"></span><span id="ver"></span><a href="/update">update</a><button id="rb">raw</button></div>
+<div id="s"><span>Wi-Fi <b id="net">–</b></span><span>BLE <b id="ble">–</b></span><span>CAN <b id="can">–</b></span><span class="sp"></span><span id="ver"></span><a href="/can">sniffer</a><a href="/update">update</a><button id="rb">raw</button></div>
 <script>
 const NAMES={speed:"Speed",rpm:"RPM",coolant:"Coolant",outside:"Outside",battery:"Battery",fuel:"Fuel",range:"Range"};
 const STALE=3000,g=document.getElementById("g"),cards={};
@@ -98,3 +98,81 @@ document.getElementById("f").onsubmit=e=>{
 };
 </script>
 </body></html>)HTML";
+
+// Live CAN sniffer at "/can": every seen ID with its latest bytes; bytes that
+// changed in the last second are highlighted. Polls /canapi.
+static const char kSnifferPage[] PROGMEM = R"HTML(<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>E92 CAN sniffer</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;color:#ddd;font-family:-apple-system,system-ui,sans-serif;padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) 8px max(8px,env(safe-area-inset-left))}
+#t{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;margin-bottom:8px}
+#t a,#t button,#t input{background:#222;color:#ccc;border:0;border-radius:8px;padding:6px 10px;font-size:13px;text-decoration:none}
+#t input{width:90px;font-family:ui-monospace,Menlo,monospace}
+#t button.on{background:#2a4a7a;color:#fff}
+#info{color:#777}
+#int{font:12px ui-monospace,Menlo,monospace;color:#888;margin-bottom:8px}
+#int b{border-radius:4px;padding:1px 6px;color:#fff;font-weight:600}
+#int b.ok{background:#1f6a33}#int b.bad{background:#8a2020}#int b.wait{background:#444}
+table{width:100%;border-collapse:collapse;font:13px ui-monospace,Menlo,monospace}
+th{position:sticky;top:0;background:#000;color:#777;font-weight:400;text-align:left;padding:4px 6px}
+td{padding:3px 6px;border-top:1px solid #151515;white-space:nowrap}
+td.n{text-align:right;color:#888}
+.d span{display:inline-block;width:2.3ch;margin-right:.4ch}
+.d span.c{background:#7a5a10;color:#fff;border-radius:3px}
+tr.old{opacity:.35}
+</style></head><body>
+<div id="t"><a href="/">&larr; Dash</a><input id="f" placeholder="ID filter" autocapitalize="characters" autocomplete="off">
+<button id="ch">changed only</button><button id="pa">pause</button><button id="rs">reset</button><span id="info"></span></div>
+<div id="int"></div>
+<table><thead><tr><th>ID</th><th>Data</th><th class="n">Hz</th><th class="n">Count</th></tr></thead><tbody id="b"></tbody></table>
+<script>
+const b=document.getElementById("b"),info=document.getElementById("info"),f=document.getElementById("f");
+let onlyCh=false,paused=false,reset=false,prev={},prevT=0;
+const tog=(id,fn)=>{const el=document.getElementById(id);el.onclick=()=>{el.classList.toggle("on",fn());};};
+tog("ch",()=>onlyCh=!onlyCh);
+tog("pa",()=>paused=!paused);
+document.getElementById("rs").onclick=()=>{reset=true;prev={};};
+const ie=document.getElementById("int");
+function showInt(s){
+ if(!s||!s[0]){ie.textContent="INT pin: not configured (polling)";return;}
+ const [,irq,fr,pol,err,hi]=s,pct=fr?pol*100/fr:0;
+ let v;
+ if(fr<50)v='<b class="wait">waiting for frames</b>';
+ else if(irq===0)v='<b class="bad">INT not working: no interrupts (check wire)</b>';
+ else if(pct>5)v='<b class="bad">INT unreliable: '+pct.toFixed(1)+'% polled</b>';
+ else v='<b class="ok">INT OK</b>';
+ ie.innerHTML=v+" &nbsp;irq "+irq+" · frames "+fr+" · polled "+pol+" ("+pct.toFixed(1)+"%) · err "+err+" · pin "+(hi?"high":"low");
+}
+async function poll(){
+ try{
+  if(!paused||reset){
+   const r=await fetch("/canapi"+(reset?"?reset=1":""),{cache:"no-store"});reset=false;
+   const d=await r.json(),now=performance.now(),dt=(now-prevT)/1000,flt=f.value.trim().toUpperCase();
+   let rows=[],shown=0;
+   d.ids.sort((x,y)=>x[0]-y[0]);
+   for(const [id,ext,hex,chg,cnt,age] of d.ids){
+    const ids=id.toString(16).toUpperCase().padStart(ext?8:3,"0");
+    const key=ids+(ext?"x":"");
+    const hz=prev[key]!==undefined&&dt>0?Math.max(0,(cnt-prev[key])/dt):0;
+    prev[key]=cnt;
+    if(flt&&!ids.includes(flt))continue;
+    if(onlyCh&&!chg)continue;
+    let bytes="";
+    for(let i=0;i<hex.length/2;i++)bytes+='<span'+(chg>>i&1?' class="c"':'')+'>'+hex.substr(i*2,2)+'</span>';
+    rows.push('<tr'+(age>3000?' class="old"':'')+'><td>'+ids+'</td><td class="d">'+bytes+'</td><td class="n">'+(hz<10?hz.toFixed(1):Math.round(hz))+'</td><td class="n">'+cnt+'</td></tr>');
+    shown++;
+   }
+   prevT=now;
+   b.innerHTML=rows.join("");
+   info.textContent=shown+" / "+d.ids.length+" IDs"+(d.full?" (table full)":"");
+   showInt(d.int);
+  }
+ }catch(e){info.textContent="offline";}
+ setTimeout(poll,500);
+}
+poll();
+</script></body></html>)HTML";
