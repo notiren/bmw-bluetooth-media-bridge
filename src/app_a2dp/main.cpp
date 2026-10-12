@@ -8,6 +8,7 @@
 #include "BluetoothA2DPSink.h"
 #include "../common/can_bus.h"
 #include "../common/mfl.h"
+#include "../common/watchdog.h"
 
 #if !defined(CONFIG_IDF_TARGET_ESP32)
 #error "app_a2dp needs a classic ESP32: ESP32-S3/C3 have no Bluetooth Classic (A2DP)."
@@ -58,6 +59,8 @@ static void handlePress(MflButton b) {
 void setup() {
     Serial.begin(115200);
     delay(500);
+    Serial.printf("Reset: %s\n", resetReasonName());
+    watchdogBegin();
 
     auto cfg = g_i2s.defaultConfig(TX_MODE);
     cfg.pin_bck = I2S_BCK_PIN;
@@ -79,6 +82,7 @@ void setup() {
 }
 
 void loop() {
+    watchdogFeed();
     CanFrame f;
     const uint32_t now = millis();
     if (canRead(f, 10)) {

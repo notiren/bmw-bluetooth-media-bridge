@@ -6,7 +6,7 @@
 //
 // The formulas in kcan_dash.cpp are UNVERIFIED community decodings for the
 // E9x. The dashboard shows the raw bytes next to each value so every formula
-// can be checked against the car (and the logger) before it is trusted.
+// can be checked against the car (and the sniffer page) before it is trusted.
 // If a value is wrong, change its entry in kcan_dash.cpp only.
 
 enum DashField : uint8_t {
@@ -37,8 +37,8 @@ struct DashValue {
 
 class KcanDash {
 public:
-    // Feed every received frame. Returns true if it updated a dashboard value.
-    bool update(const CanFrame &frame, uint32_t nowMs);
+    // Feed every received frame.
+    void update(const CanFrame &frame, uint32_t nowMs);
 
     const DashValue &value(DashField f) const { return values_[f]; }
     static const DashFieldInfo &info(DashField f);

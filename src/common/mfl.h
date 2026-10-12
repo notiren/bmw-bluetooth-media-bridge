@@ -7,7 +7,7 @@
 // Layout from the opendbc BMW E8x/E9x DBC (BO_ 470 SteeringButtons, 2 bytes),
 // cross-checked with BlueGenieBMW and llilakoblock/bmw-e87-e90-can-bt.
 // Idle frame = C0 0C. byte0 == 0xFF signals a steering-button fault.
-// Verify with the logger ("m" mode) on your car:
+// Verify on your car (serial monitor prints each press, sniffer shows 0x1D6):
 //
 //   button        byte  mask   example frame
 //   Up/Next        0    0x20   E0 0C
@@ -42,12 +42,10 @@ public:
     uint8_t update(const CanFrame &frame, uint32_t nowMs);
 
     // Call regularly: releases all buttons if 0x1D6 has not been seen for a
-    // while (e.g. ignition off / bus asleep). Returns true if state changed.
-    bool tick(uint32_t nowMs);
+    // while (e.g. ignition off / bus asleep).
+    void tick(uint32_t nowMs);
 
     uint8_t heldMask() const { return held_; }
-
-    static uint8_t decode(const CanFrame &frame);
 
 private:
     uint8_t held_ = 0;

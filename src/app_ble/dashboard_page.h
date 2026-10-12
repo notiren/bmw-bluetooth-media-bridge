@@ -35,7 +35,7 @@ body.raw .r{display:block}
 .bad{color:#e55!important}
 </style></head><body>
 <div id="g"></div>
-<div id="s"><span>Wi-Fi <b id="net">–</b></span><span>BLE <b id="ble">–</b></span><span>CAN <b id="can">–</b></span><span class="sp"></span><span id="ver"></span><a href="/can">sniffer</a><a href="/update">update</a><button id="rb">raw</button></div>
+<div id="s"><span>Wi-Fi <b id="net">–</b></span><span>BLE <b id="ble">–</b></span><span>CAN <b id="can">–</b></span><span>Reset <b id="rst">–</b></span><span class="sp"></span><span id="ver"></span><a href="/can">sniffer</a><a href="/update">update</a><button id="rb">raw</button></div>
 <script>
 const NAMES={speed:"Speed",rpm:"RPM",coolant:"Coolant",outside:"Outside",battery:"Battery",fuel:"Fuel",range:"Range"};
 const STALE=3000,g=document.getElementById("g"),cards={};
@@ -51,7 +51,7 @@ const stale=f.age<0||f.age>STALE;const txt=f.v===null?"–":f.v.toFixed(f.d);
 show(f.k,txt,f.u,stale,"0x"+f.id+": "+(f.raw||"no frame"));}
 if(!btnCard)btnCard=card("btn","Last button");
 show("btn",d.btn||"–","",d.btnAge<0||d.btnAge>10000,d.btnAge<0?"":(d.btnAge/1000).toFixed(1)+" s ago");
-document.getElementById("ver").textContent="v"+d.ver;const net=document.getElementById("net");net.textContent="connected";net.classList.remove("bad");
+document.getElementById("ver").textContent="v"+d.ver;const rs=document.getElementById("rst");rs.textContent=d.reset;rs.classList.toggle("bad",d.resetFault);const net=document.getElementById("net");net.textContent="connected";net.classList.remove("bad");
 const ble=document.getElementById("ble");ble.textContent=d.ble?"connected":"waiting";ble.classList.toggle("bad",!d.ble);
 const can=document.getElementById("can");const ca=d.canAge<0||d.canAge>2000;
 can.textContent=ca?"no frames":d.fps+" fr/s";can.classList.toggle("bad",ca);}
@@ -114,7 +114,7 @@ body{background:#000;color:#ddd;font-family:-apple-system,system-ui,sans-serif;p
 #t input{width:90px;font-family:ui-monospace,Menlo,monospace}
 #t button.on{background:#2a4a7a;color:#fff}
 #info{color:#777}
-#int{font:12px ui-monospace,Menlo,monospace;color:#888;margin-bottom:8px}
+#int{font:12px ui-monospace,Menlo,monospace;margin-bottom:8px}
 #int b{border-radius:4px;padding:1px 6px;color:#fff;font-weight:600}
 #int b.ok{background:#1f6a33}#int b.bad{background:#8a2020}#int b.wait{background:#444}
 table{width:100%;border-collapse:collapse;font:13px ui-monospace,Menlo,monospace}
@@ -138,14 +138,8 @@ tog("pa",()=>paused=!paused);
 document.getElementById("rs").onclick=()=>{reset=true;prev={};};
 const ie=document.getElementById("int");
 function showInt(s){
- if(!s||!s[0]){ie.textContent="INT pin: not configured (polling)";return;}
- const [,irq,fr,pol,err,hi]=s,pct=fr?pol*100/fr:0;
- let v;
- if(fr<50)v='<b class="wait">waiting for frames</b>';
- else if(irq===0)v='<b class="bad">INT not working: no interrupts (check wire)</b>';
- else if(pct>5)v='<b class="bad">INT unreliable: '+pct.toFixed(1)+'% polled</b>';
- else v='<b class="ok">INT OK</b>';
- ie.innerHTML=v+" &nbsp;irq "+irq+" · frames "+fr+" · polled "+pol+" ("+pct.toFixed(1)+"%) · err "+err+" · pin "+(hi?"high":"low");
+ const m={ok:['ok','INT OK'],silent:['bad','INT: no interrupts yet (check wire; polling instead)'],none:['wait','INT: not configured (polling)']}[s]||['wait','INT: ?'];
+ ie.innerHTML='<b class="'+m[0]+'">'+m[1]+'</b>';
 }
 async function poll(){
  try{

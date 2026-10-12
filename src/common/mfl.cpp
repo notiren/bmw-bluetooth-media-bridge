@@ -6,7 +6,7 @@ struct BitDef {
     uint8_t mask;
 };
 
-// Index = MflButton. Adjust here after verifying with the logger.
+// Index = MflButton. Adjust here after verifying on the car.
 constexpr BitDef kBits[MFL_BUTTON_COUNT] = {
     {0, 0x20},  // MFL_NEXT
     {0, 0x10},  // MFL_PREV
@@ -21,15 +21,9 @@ constexpr uint32_t kMinRepressMs = 150;      // ignore bounce between frames
 
 const char *const kNames[MFL_BUTTON_COUNT] = {
     "NEXT", "PREV", "VOL+", "VOL-", "PHONE", "VOICE"};
-}  // namespace
 
-const char *mflButtonName(MflButton b) {
-    return b < MFL_BUTTON_COUNT ? kNames[b] : "?";
-}
-
-uint8_t MflDecoder::decode(const CanFrame &frame) {
-    if (frame.id != MFL_CAN_ID || frame.extended || frame.rtr) return 0;
-    if (frame.dlc < 1 || frame.data[0] == 0xFF) return 0;  // fault / invalid
+// Bitmask (1 << MflButton) of the buttons held in a valid 0x1D6 frame.
+uint8_t buttonsIn(const CanFrame &frame) {
     uint8_t mask = 0;
     for (uint8_t i = 0; i < MFL_BUTTON_COUNT; ++i) {
         if (kBits[i].byte < frame.dlc && (frame.data[kBits[i].byte] & kBits[i].mask)) {
@@ -38,13 +32,18 @@ uint8_t MflDecoder::decode(const CanFrame &frame) {
     }
     return mask;
 }
+}  // namespace
+
+const char *mflButtonName(MflButton b) {
+    return b < MFL_BUTTON_COUNT ? kNames[b] : "?";
+}
 
 uint8_t MflDecoder::update(const CanFrame &frame, uint32_t nowMs) {
     if (frame.id != MFL_CAN_ID || frame.extended || frame.rtr) return 0;
     if (frame.dlc < 1 || frame.data[0] == 0xFF) return 0;  // keep last state on fault frames
     lastFrameMs_ = nowMs;
 
-    const uint8_t now = decode(frame);
+    const uint8_t now = buttonsIn(frame);
     uint8_t pressed = now & ~held_;
     for (uint8_t i = 0; i < MFL_BUTTON_COUNT; ++i) {
         if (!(pressed & (1 << i))) continue;
@@ -58,10 +57,6 @@ uint8_t MflDecoder::update(const CanFrame &frame, uint32_t nowMs) {
     return pressed;
 }
 
-bool MflDecoder::tick(uint32_t nowMs) {
-    if (held_ && nowMs - lastFrameMs_ > kReleaseTimeoutMs) {
-        held_ = 0;
-        return true;
-    }
-    return false;
+void MflDecoder::tick(uint32_t nowMs) {
+    if (held_ && nowMs - lastFrameMs_ > kReleaseTimeoutMs) held_ = 0;
 }

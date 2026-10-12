@@ -1,4 +1,5 @@
-// Copy this file to include/secrets.h and fill in your values.
+// Copy this file to include/secrets.h and fill in your values. Required for
+// app_ble with the dashboard (ENABLE_DASHBOARD=1).
 // include/secrets.h is git-ignored, so your passwords stay on your machine.
 #pragma once
 
@@ -8,6 +9,6 @@
 #define AP_SSID "BMW E92 Dash"
 #define AP_PASSWORD "change-me-ap"
 
-// Password for OTA firmware updates (PlatformIO upload and the /update web
-// page, user "admin"). At least 8 characters.
+// Password for OTA firmware updates (the /update page or curl, user "admin").
+// At least 8 characters.
 #define OTA_PASSWORD "change-me-ota"

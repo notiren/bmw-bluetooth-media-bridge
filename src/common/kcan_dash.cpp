@@ -9,7 +9,7 @@ struct FieldDef {
     DecodeFn decode;
 };
 
-// ---- UNVERIFIED E9x decodings: confirm each with the logger ----
+// ---- UNVERIFIED E9x decodings: confirm each with the sniffer ----
 
 // 0x1B4 Kombi speed: 12 bit, low byte first, 1/16 km/h.
 bool decodeSpeed(const uint8_t *d, uint8_t dlc, float &out) {
@@ -80,12 +80,11 @@ const FieldDef kFields[DASH_FIELD_COUNT] = {
 
 const DashFieldInfo &KcanDash::info(DashField f) { return kFields[f].info; }
 
-bool KcanDash::update(const CanFrame &frame, uint32_t nowMs) {
+void KcanDash::update(const CanFrame &frame, uint32_t nowMs) {
     ++totalFrames_;
     lastFrameMs_ = nowMs;
-    if (frame.extended || frame.rtr) return false;
+    if (frame.extended || frame.rtr) return;
 
-    bool used = false;
     for (uint8_t i = 0; i < DASH_FIELD_COUNT; ++i) {
         if (kFields[i].info.canId != frame.id) continue;
         DashValue &v = values_[i];
@@ -97,7 +96,5 @@ bool KcanDash::update(const CanFrame &frame, uint32_t nowMs) {
             v.valid = true;
             v.updatedMs = nowMs;
         }
-        used = true;
     }
-    return used;
 }

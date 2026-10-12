@@ -18,7 +18,7 @@ Phone ─A2DP─► Bluetooth-to-AUX receiver ─► AUX ─► car speakers
 The phone pairs with two devices: the audio receiver and "BMW E92
 Buttons". Volume stays with the factory radio.
 
-Current firmware: **1.4** (see [Changelog](#changelog)).
+Current firmware: **1.5** (see [Changelog](#changelog)).
 
 ## Supported cars
 
@@ -28,8 +28,7 @@ Current firmware: **1.4** (see [Changelog](#changelog)).
 | E8x (E81/E82/E87/E88) | Expected to work (same K-CAN and 0x1D6 buttons), not tested yet |
 
 Needs the multifunction steering wheel. Dashboard values may differ per
-model; check them with the **raw** view. Tested it in an E8x or another
-E9x body? Open an issue with the result.
+model; check them with the **raw** view.
 
 ## Hardware
 
@@ -47,74 +46,48 @@ E9x body? Open an issue with the result.
 | Car GND | Buck IN− | |
 | Buck 5 V | MCP2515 VCC, C3 `5V` | Buck 3.3 V output not used |
 | Buck GND | MCP2515 GND, C3 GND | Common ground |
-| C3 GPIO4 | MCP2515 CS | Direct |
-| C3 GPIO6 | MCP2515 SI | Direct |
-| C3 GPIO7 | MCP2515 SCK | Direct |
+| MCP2515 CS | C3 GPIO4 | Direct |
+| MCP2515 SI | C3 GPIO6 | Direct |
+| MCP2515 SCK | C3 GPIO7 | Direct |
 | MCP2515 SO | C3 GPIO5 via 2.2 kΩ | Plus 3.3 kΩ from GPIO5 to GND (5 V → 3.3 V divider) |
 | MCP2515 INT | C3 GPIO10 via 2.2 kΩ | Optional. Plus 3.3 kΩ from GPIO10 to GND (same divider as SO). Without it the C3 polls instead |
 | MCP2515 CANH | K-CAN high (green) | Behind the radio |
 | MCP2515 CANL | K-CAN low (orange) | Behind the radio |
 
-Notes:
-
 -   Remove jumper **J1** (120 Ω terminator); the car bus is already
     terminated.
 -   If the crystal is marked `16.000`, set `MCP2515_CRYSTAL_MHZ=16` in
     `platformio.ini`.
--   Leave the C3's micro-USB port reachable from outside the enclosure for
-    flashing and serial logs.
+-   Leave the C3's micro-USB port reachable for flashing and serial logs.
 -   Serial runs over the board's CP2102 bridge (UART0). For a C3 board
     with native USB only (e.g. SuperMini), set `ARDUINO_USB_MODE=1` and
-    `ARDUINO_USB_CDC_ON_BOOT=1` in `[chip_esp32c3]`.
+    `ARDUINO_USB_CDC_ON_BOOT=1` in `[c3_mcp2515]`.
 
-### Where to connect
+K-CAN (100 kbit/s) is the green/orange twisted pair behind the radio. The
+OBD port (pins 6/14) is D-CAN, 500 kbit/s, diagnostics only; the gateway
+most likely does not forward 0x1D6 there. The firmware is always
+**listen-only**: it never transmits or ACKs on the car bus.
 
-K-CAN, 100 kbit/s, is reachable behind the radio: a twisted pair with
-green = CAN-H and orange = CAN-L. The OBD port (pins 6/14) is D-CAN,
-500 kbit/s, diagnostics only. The gateway most likely does not forward
-0x1D6 there.
+## Installation
 
-The firmware is always **listen-only**. It never transmits or ACKs on
-the car bus.
+1.  Wire C3 + MCP2515, create `include/secrets.h` (see
+    [Wi-Fi dashboard](#wi-fi-dashboard)) and flash
+    `app_ble_esp32c3_mcp2515` (see [Build](#build)).
+2.  Connect to K-CAN behind the radio, ignition on, and open the serial
+    monitor. Check for `CAN: MCP2515 @ 100000 bit/s listen-only`.
+3.  On the phone, pair "BMW E92 Buttons" in the Bluetooth settings. Press
+    each button: the monitor prints `MFL <button> -> BLE key ...` (see
+    [button mapping](#button-mapping)). The dashboard's **sniffer** shows
+    all CAN IDs seen.
+4.  Put it in a small enclosure (PETG/ABS, not PLA) behind the radio, or
+    in the armrest console powered by a dual USB adapter in the armrest
+    12 V socket (shared with the Bluetooth-AUX receiver, no buck
+    converter needed). The armrest keeps the C3's micro-USB port
+    reachable; run the twisted K-CAN pair (~1 m) from behind the radio.
+5.  Check the dashboard values with the **raw** view and correct
+    `src/common/kcan_dash.cpp` if any are off.
 
-## Firmware
-
-PlatformIO project. Environments used for this build:
-
-| Env | Purpose |
-|---|---|
-| `logger_esp32c3_mcp2515` | Listen-only CAN logger (test first) |
-| `app_ble_esp32c3_mcp2515` | Steering wheel → BLE media keys + Wi-Fi dashboard |
-| `app_ble_esp32c3_mcp2515_ota` | Same firmware, uploaded over Wi-Fi (OTA) |
-
-``` powershell
-pio run -e logger_esp32c3_mcp2515 -t upload
-pio device monitor -e logger_esp32c3_mcp2515
-```
-
-Logger serial commands (type the letter in the monitor):
-
-| Key | Action |
-|---|---|
-| `k` / `d` | Bitrate 100 kbit/s (K-CAN) / 500 kbit/s (D-CAN) |
-| `a` | Print all frames |
-| `c` | Print only frames whose payload changed (default) |
-| `f` | Print only 0x1D6 |
-| `m` | Print decoded button presses |
-| `s` | Statistics and list of seen IDs |
-| `h` | Help |
-
-Other environments (not used in this build):
-
--   `*_esp32s3*` for ESP32-S3.
--   Without `_mcp2515`: the ESP32 built-in CAN controller (TWAI) with a
-    3.3 V SN65HVD230 transceiver. C3/S3 pins: TX GPIO5, RX GPIO4.
--   `app_a2dp_esp32*` is for a classic ESP32 only (A2DP sink → PCM5102
-    DAC → AUX, buttons via AVRCP). This is an all-in-one alternative to
-    the external receiver. S3/C3 have no Bluetooth Classic and cannot
-    receive phone audio.
-
-### Button mapping
+## Button mapping
 
 0x1D6 is 2 bytes, idle `C0 0C` (opendbc `BO_ 470 SteeringButtons`):
 
@@ -125,128 +98,96 @@ Other environments (not used in this build):
 | Vol + | 0 | 0x08 | `C8 0C` | (factory radio) |
 | Vol − | 0 | 0x04 | `C4 0C` | (factory radio) |
 | Telephone | 0 | 0x01 | `C1 0C` | Play/Pause |
-| Voice | 1 | 0x01 | `C0 0D` | Play/Pause; hold 2 s = Wi-Fi on/off |
+| Voice | 1 | 0x01 | `C0 0D` | Play/Pause (on release); hold 2 s = Wi-Fi on/off |
 
-byte0 = `0xFF` is a fault frame and is ignored. Each physical press sends
-one command. The table lives in `src/common/mfl.cpp`.
+byte0 = `0xFF` is a fault frame and is ignored. Each press sends one
+command. The table lives in `src/common/mfl.cpp`.
 
-### Wi-Fi dashboard and OTA
+## Wi-Fi dashboard
 
-`app_ble_esp32c3_mcp2515` also serves a live dashboard (speed, RPM,
-coolant, outside temp, battery, fuel, range, last steering button) and
-accepts wireless firmware updates. Wi-Fi is **off** at startup to keep
-the C3 cool: **hold Voice for 2 s** to turn it on or off (a short press is
-still Play/Pause, sent on release). It also turns off by itself after
-10 min without anyone using the dashboard. On the bench, typing `w` in
-the serial monitor does the same. The code is in
-`src/app_ble/dashboard.*`. Build with `-DENABLE_DASHBOARD=0` (remove the
-flag in `platformio.ini`) for a BLE-only firmware.
+`app_ble_esp32c3_mcp2515` serves a live dashboard (speed, RPM, coolant,
+outside temp, battery, fuel, range, last button), a CAN sniffer and a
+firmware update page. Code: `src/app_ble/dashboard.*`.
+
+**Setup**
 
 1.  Copy `include/secrets.example.h` to `include/secrets.h` (git-ignored)
     and set the network name/password (`""` = open network) and the OTA
-    password. Without this
-    file the firmware still builds, but Wi-Fi stays off.
-2.  Flash once over USB. Hold Voice 2 s (or type `w` in the serial
-    monitor) and watch for `WiFi: on, network "BMW E92 Dash" at
-    http://192.168.4.1`.
+    password. The build stops with an error if the file is missing.
+2.  Flash over USB, hold Voice 2 s and watch the serial monitor for
+    `WiFi: on, network "BMW E92 Dash" at http://192.168.4.1`.
 3.  On the phone join **BMW E92 Dash**, open `http://192.168.4.1` and use
     Share → Add to Home Screen.
 
-The C3's network offers no internet gateway, so the phone keeps using
-mobile data for everything else (maps, music) while connected to it. No
-phone hotspot is needed.
+**Usage**
 
-The decodings in `src/common/kcan_dash.cpp` are **not verified** on the
-car yet. Use the **raw** button on the page to see the frame bytes and
-fix the formulas if needed. Values with no recent frames are dimmed.
+-   Wi-Fi is **off** at startup. **Hold Voice 2 s** to turn it on or off
+    (`w` in the serial monitor does the same). It turns off by itself
+    after 10 min without use.
+-   The network has no internet gateway, so the phone keeps using mobile
+    data for maps and music. No phone hotspot needed.
+-   The decodings in `src/common/kcan_dash.cpp` are **not verified** yet.
+    Use the **raw** button to see the frame bytes. Stale values are
+    dimmed.
+-   **Sniffer** (`/can`): every K-CAN ID live with changed bytes
+    highlighted, rate, count, filter and pause. The top line shows
+    **INT OK** when the MCP2515 INT wire works (otherwise the C3 polls).
+-   The C3 runs at 80 MHz with reduced Wi-Fi power to stay cool.
+-   A watchdog restarts the C3 if the firmware hangs for 8 s. The status
+    bar shows why it last restarted (**Reset**), in red after a crash,
+    watchdog or brownout.
+-   For a BLE-only firmware, set `-DENABLE_DASHBOARD=0` in
+    `platformio.ini`. For bench tests without a car, uncomment
+    `-DBENCH_FAKE_CAN=1` to feed fake frames.
 
-Tap **sniffer** (`http://192.168.4.1/can`) to see every K-CAN ID live:
-latest bytes (changed ones highlighted), rate and count, with an ID
-filter, "changed only", pause and reset. Frames are only recorded while
-Wi-Fi is on. The line at the top checks the MCP2515 INT wire: **INT OK**
-means frames arrive by interrupt; "polled" counts frames only caught by
-the 10 ms fallback (a few tenths of a percent is normal). On the bench,
-build with `-DBENCH_FAKE_CAN=1` to feed the dashboard and sniffer with
-fake frames.
+**Firmware update (OTA)**
 
-To run cooler, the C3 runs at 80 MHz and the Wi-Fi transmit power is
-reduced (plenty for a phone inside the car).
-
-Firmware update without USB (turn Wi-Fi on and join **BMW E92 Dash** with
-the Mac first):
+Tap **update** in the status bar (`/update`, user `admin`, password
+`OTA_PASSWORD`) and upload
+`.pio/build/app_ble_esp32c3_mcp2515/firmware.bin` (e.g. AirDrop it to the
+phone). Or from a computer joined to **BMW E92 Dash**:
 
 ``` sh
-pio run -e app_ble_esp32c3_mcp2515_ota -t upload
+pio run -e app_ble_esp32c3_mcp2515
+curl -u admin -F "firmware=@.pio/build/app_ble_esp32c3_mcp2515/firmware.bin" http://192.168.4.1/update
 ```
 
-Or tap **update** in the dashboard's status bar
-(`http://192.168.4.1/update`, user `admin`, password `OTA_PASSWORD`) and
-upload `.pio/build/app_ble_esp32c3_mcp2515/firmware.bin`, e.g. sent to
-the phone via AirDrop.
+`curl` asks for the password, so it stays out of the shell history.
 
-### Build setup (Windows)
+## Build
 
-GCC toolchains fail if the PlatformIO path contains non-ASCII characters
-(e.g. a user name with `ç`, `ë`, `ü`). In that case, point PlatformIO at
-an ASCII path. The easiest is the 8.3 short name of your profile folder:
+PlatformIO project.
 
-``` powershell
-# Get the ASCII short path of your profile, e.g. C:\Users\NAME~1
-$short = cmd /c 'for %I in ("%USERPROFILE%") do @echo %~sI'
-$core  = "$short\.platformio"
+| Env | Purpose |
+|---|---|
+| `app_ble_esp32c3_mcp2515` | Steering wheel → BLE media keys + Wi-Fi dashboard |
+| `app_a2dp_esp32` | Classic ESP32 (WROOM-32) all-in-one: A2DP sink → PCM5102 DAC → AUX, buttons via AVRCP, built-in CAN (TWAI) + SN65HVD230 (TX GPIO17, RX GPIO16). C3/S3 have no Bluetooth Classic |
 
-# Install PlatformIO into a venv inside it
-py -m venv "$core\penv"
-& "$core\penv\Scripts\python.exe" -m pip install platformio
-
-# Make it permanent for your user (restart the terminal afterwards)
-[Environment]::SetEnvironmentVariable('PLATFORMIO_CORE_DIR', $core, 'User')
-$p = [Environment]::GetEnvironmentVariable('Path', 'User')
-[Environment]::SetEnvironmentVariable('Path', "$p;$core\penv\Scripts", 'User')
-```
-
-If 8.3 names are disabled on the drive, use any ASCII folder instead,
-e.g. `C:\pio`. With an ASCII user name, a normal `pip install platformio`
-or the VS Code PlatformIO extension works without this.
-
-### Build setup (macOS)
+**macOS**
 
 ``` sh
 brew install platformio
-cd e9x-kcan-media-control
 cp include/secrets.example.h include/secrets.h   # then edit it
-pio run -e app_ble_esp32c3_mcp2515
-```
-
-Flash and monitor over USB. The DevKitM-1's CP2102 shows up as
-`/dev/cu.usbserial-*`, and macOS has the driver built in:
-
-``` sh
-pio device list
 pio run -e app_ble_esp32c3_mcp2515 -t upload
 pio device monitor -e app_ble_esp32c3_mcp2515
 ```
 
-If the board doesn't show up, use a data cable (not charge-only) and
-avoid a hub's power-only (PD) port; plug it into the Mac directly or via
-a plain USB adapter. With more than one serial device, pick the port with
+The CP2102 shows up as `/dev/cu.usbserial-*` (driver built in). If it
+doesn't, use a data cable and plug it in directly, not via a hub's
+power-only port. With several serial devices, add
 `--upload-port /dev/cu.usbserial-XX`.
 
-## Installation
+**Windows**
 
-1.  Wire C3 + MCP2515 and flash `logger_esp32c3_mcp2515`.
-2.  Connect to K-CAN behind the radio, ignition on, confirm 0x1D6 frames.
-3.  In `m` mode, press each button and verify the table above. Type `s`
-    to list the CAN IDs seen at the tap point.
-4.  Flash `app_ble_esp32c3_mcp2515`. On the phone, open Bluetooth
-    settings, pair "BMW E92 Buttons", and test.
-5.  Put it in a small enclosure (PETG/ABS, not PLA) behind the radio, or
-    in the armrest console powered by a dual USB adapter in the armrest
-    12 V socket (shared with the Bluetooth-AUX receiver, no buck
-    converter needed). The armrest keeps the C3's micro-USB port
-    reachable; run the twisted K-CAN pair (~1 m) from behind the radio.
-6.  Check the dashboard values with the **raw** view and correct
-    `src/common/kcan_dash.cpp` if any are off.
+``` powershell
+pip install platformio
+copy include\secrets.example.h include\secrets.h   # then edit it
+pio run -e app_ble_esp32c3_mcp2515 -t upload
+pio device monitor -e app_ble_esp32c3_mcp2515
+```
+
+The CP2102 shows up as a `COM` port (install the Silicon Labs CP210x
+driver if it doesn't). With several, add `--upload-port COMx`.
 
 ## Roadmap
 
@@ -260,11 +201,15 @@ a plain USB adapter. With more than one serial device, pick the port with
 
 ## Changelog
 
--   **1.4**: CAN sniffer page, MCP2515 INT on GPIO10 with diagnostics,
-    80 MHz CPU and lower Wi-Fi power (runs cooler), macOS build setup.
--   **1.3**: Wi-Fi dashboard and OTA updates; hold Voice 2 s to toggle
-    Wi-Fi; CAN reading in its own task.
--   Earlier: ESP32-C3-DevKitM-1 support, MCP2515 pins on GPIO4–7.
+-   **1.5**: Code cleanup: logger removed (the app prints button presses,
+    the sniffer lists CAN IDs), 2 build environments, OTA only via
+    `/update` or `curl` (ArduinoOTA removed), simpler INT check,
+    `secrets.h` required for the dashboard build, Voice always acts on
+    release, 8 s watchdog with the reset reason on serial and the
+    dashboard.
+-   **1.4**: CAN sniffer, MCP2515 INT on GPIO10, 80 MHz CPU and lower
+    Wi-Fi power, macOS build setup.
+-   **1.3**: Wi-Fi dashboard and OTA; hold Voice 2 s for Wi-Fi.
 
 ## References
 

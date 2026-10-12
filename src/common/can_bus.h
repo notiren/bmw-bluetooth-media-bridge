@@ -17,18 +17,11 @@ struct CanFrame {
 };
 
 bool canBegin(uint32_t bitrate);
-void canEnd();
 // Returns true if a frame was received within timeoutMs.
 bool canRead(CanFrame &frame, uint32_t timeoutMs);
 const char *canBackendName();
 
-// MCP2515 INT diagnostics. hasInt is false when no INT pin is configured.
-struct CanIntStats {
-    bool hasInt;
-    uint32_t irqs;       // INT falling edges seen
-    uint32_t frames;     // frames read
-    uint32_t polled;     // frames only found by the 10 ms fallback poll (INT missed)
-    uint32_t errClears;  // MCP2515 error flags cleared
-    bool pinHigh;        // current INT level (idle = high)
-};
-CanIntStats canIntStats();
+// MCP2515 INT wire check: None = no INT pin configured (TWAI or polling),
+// Ok = interrupts seen, Silent = no interrupt yet (unwired: polling instead).
+enum class CanInt : uint8_t { None, Ok, Silent };
+CanInt canIntStatus();
