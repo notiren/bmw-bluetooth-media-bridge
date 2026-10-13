@@ -29,7 +29,8 @@ body{display:flex;flex-direction:column;padding:max(8px,env(safe-area-inset-top)
 .r{font:11px ui-monospace,Menlo,monospace;color:#6a6;display:none;white-space:nowrap;overflow:hidden}
 body.raw .r{display:block}
 #s{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:#777;padding-top:6px;align-items:center}
-#s b{font-weight:500;color:#aaa}
+#s b{font-weight:500;color:#aaa;font-variant-numeric:tabular-nums}
+#can{display:inline-block;min-width:6ch}
 #s .sp{flex:1}
 #s button,#s a{text-decoration:none;background:#222;color:#aaa;border:0;border-radius:8px;padding:4px 10px;font-size:12px}
 .bad{color:#e55!important}
@@ -54,7 +55,7 @@ show("btn",d.btn||"–","",d.btnAge<0||d.btnAge>10000,d.btnAge<0?"":(d.btnAge/10
 document.getElementById("ver").textContent="v"+d.ver;const rs=document.getElementById("rst");rs.textContent=d.reset;rs.classList.toggle("bad",d.resetFault);const net=document.getElementById("net");net.textContent="connected";net.classList.remove("bad");
 const ble=document.getElementById("ble");ble.textContent=d.ble?"connected":"waiting";ble.classList.toggle("bad",!d.ble);
 const can=document.getElementById("can");const ca=d.canAge<0||d.canAge>2000;
-can.textContent=ca?"no frames":d.fps+" fr/s";can.classList.toggle("bad",ca);}
+can.textContent=ca?"none":d.fps+"/s";can.classList.toggle("bad",ca);}
 let busy=false;
 async function poll(){if(busy)return;busy=true;const ac=new AbortController();const t=setTimeout(()=>ac.abort(),1500);
 try{const r=await fetch("/api",{cache:"no-store",signal:ac.signal});render(await r.json());}
