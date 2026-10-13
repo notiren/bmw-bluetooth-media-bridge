@@ -1,4 +1,4 @@
-# e9x-kcan-media-control
+# bmw-bluetooth-media-bridge
 
 ![Module concept](3d-design-concept.png)
 
