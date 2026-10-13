@@ -1,4 +1,4 @@
-# bmw-bluetooth-media-bridge
+# BMW Bluetooth Media Bridge
 
 ![Module concept](3d-design-concept.png)
 
