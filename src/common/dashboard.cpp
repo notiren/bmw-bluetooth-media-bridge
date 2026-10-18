@@ -7,7 +7,7 @@
 #include <esp_netif.h>
 #include "can_id_table.h"
 #include "dashboard_page.h"
-#include "../common/watchdog.h"
+#include "watchdog.h"
 
 #if !__has_include("secrets.h")
 #error "include/secrets.h missing: copy include/secrets.example.h to include/secrets.h and set your passwords (or build with -DENABLE_DASHBOARD=0)."
@@ -30,7 +30,7 @@ constexpr uint32_t kIdleOffMs = 10UL * 60 * 1000;  // nobody uses the dashboard 
 constexpr uint32_t kChangedWindowMs = 1000;         // sniffer: highlight bytes changed this recently
 
 const KcanDash *g_dash = nullptr;
-const volatile bool *g_ble = nullptr;
+const volatile bool *g_phone = nullptr;
 WebServer g_server(80);
 bool g_wifiOn = false;
 uint32_t g_lastUseMs = 0;
@@ -101,8 +101,8 @@ void handleApi() {
     j += resetWasFault() ? "true" : "false";
     j += ",\"clients\":";
     j += WiFi.softAPgetStationNum();
-    j += ",\"ble\":";
-    j += (g_ble && *g_ble) ? "true" : "false";
+    j += ",\"phone\":";
+    j += (g_phone && *g_phone) ? "true" : "false";
     j += ",\"fps\":";
     j += g_fps;
     j += ",\"canAge\":";
@@ -213,7 +213,7 @@ void apNoGateway() {
 }
 
 void wifiOn() {
-    // Modem sleep stays on: required for Wi-Fi and BLE to share the radio.
+    // Modem sleep stays on: required for Wi-Fi and Bluetooth to share the radio.
     WiFi.mode(WIFI_AP);
     WiFi.softAP(AP_SSID, sizeof(AP_PASSWORD) > 1 ? AP_PASSWORD : nullptr);
     apNoGateway();
@@ -235,9 +235,9 @@ void wifiOff(const char *why) {
 }
 }  // namespace
 
-void dashboardBegin(const KcanDash &dash, const volatile bool &bleConnected) {
+void dashboardBegin(const KcanDash &dash, const volatile bool &phoneConnected) {
     g_dash = &dash;
-    g_ble = &bleConnected;
+    g_phone = &phoneConnected;
     g_server.on("/", HTTP_GET, [] { g_server.send_P(200, "text/html", kDashboardPage); });
     g_server.on("/api", HTTP_GET, handleApi);
     g_server.on("/can", HTTP_GET, [] { g_server.send_P(200, "text/html", kSnifferPage); });

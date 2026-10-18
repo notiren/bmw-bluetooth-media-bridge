@@ -1,6 +1,6 @@
 #pragma once
 #include <Arduino.h>
-#include "../common/can_bus.h"
+#include "can_bus.h"
 
 // Table of every CAN ID seen, with its latest payload, for the dashboard's
 // sniffer page.

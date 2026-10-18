@@ -1,22 +1,23 @@
 #pragma once
-// Optional Wi-Fi dashboard + OTA updates for the BLE app.
+// Optional Wi-Fi dashboard + OTA updates (both apps).
 // Build with -DENABLE_DASHBOARD=1 (see platformio.ini, needs include/secrets.h);
 // with 0 these functions do nothing and the firmware is buttons only.
 //
 // Wi-Fi is off at boot. Holding the Voice button for 2 s toggles it; it also
 // turns off after 10 min without dashboard/OTA use.
-// Wi-Fi: the C3 opens its own network (AP_SSID, include/secrets.h) without a
+// Wi-Fi: the ESP32 opens its own network (AP_SSID, include/secrets.h) without a
 // default gateway, so the phone keeps mobile data for the internet.
 // Dashboard address: http://192.168.4.1
-#include "../common/can_bus.h"
-#include "../common/kcan_dash.h"
+#include "can_bus.h"
+#include "kcan_dash.h"
 
 #ifndef ENABLE_DASHBOARD
 #define ENABLE_DASHBOARD 0
 #endif
 
 #if ENABLE_DASHBOARD
-void dashboardBegin(const KcanDash &dash, const volatile bool &bleConnected);
+// phoneConnected: Bluetooth link to the phone (A2DP or BLE), shown in the status bar.
+void dashboardBegin(const KcanDash &dash, const volatile bool &phoneConnected);
 void dashboardLoop();
 void dashboardNoteButton(const char *name);
 void dashboardToggleWifi();

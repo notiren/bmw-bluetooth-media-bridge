@@ -11,11 +11,12 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <NimBLEHIDDevice.h>
+#include "../common/bench_fake_can.h"
 #include "../common/can_bus.h"
 #include "../common/kcan_dash.h"
 #include "../common/mfl.h"
 #include "../common/watchdog.h"
-#include "dashboard.h"
+#include "../common/dashboard.h"
 
 #ifndef CAN_BITRATE
 #define CAN_BITRATE 100000
@@ -25,10 +26,6 @@
 #endif
 #ifndef BLE_DEVICE_NAME
 #define BLE_DEVICE_NAME "BMW E92 Buttons"
-#endif
-
-#if BENCH_FAKE_CAN
-void benchFakeCanTask(void *queue);  // bench_fake_can.cpp
 #endif
 
 // Consumer-control report: 1 byte, one bit per key.

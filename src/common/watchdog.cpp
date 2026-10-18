@@ -4,7 +4,7 @@
 
 void watchdogBegin() {
     // The core starts the task watchdog with 5 s; give loop() some more
-    // headroom (Wi-Fi start, BLE) and restart the chip when it fires.
+    // headroom (Wi-Fi start, Bluetooth) and restart the chip when it fires.
     esp_task_wdt_init(kWatchdogTimeoutS, true);
     watchdogWatchThisTask();
 }

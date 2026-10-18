@@ -1,9 +1,9 @@
 // Copy this file to include/secrets.h and fill in your values. Required for
-// app_ble with the dashboard (ENABLE_DASHBOARD=1).
+// both apps when the dashboard is on (ENABLE_DASHBOARD=1).
 // include/secrets.h is git-ignored, so your passwords stay on your machine.
 #pragma once
 
-// The C3's own Wi-Fi network (dashboard at http://192.168.4.1).
+// The ESP32's own Wi-Fi network (dashboard at http://192.168.4.1).
 // Password: at least 8 characters, or "" for an open network (the dashboard
 // is read-only; OTA updates still need OTA_PASSWORD).
 #define AP_SSID "BMW E92 Dash"

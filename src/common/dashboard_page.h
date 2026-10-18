@@ -36,7 +36,7 @@ body.raw .r{display:block}
 .bad{color:#e55!important}
 </style></head><body>
 <div id="g"></div>
-<div id="s"><span>Wi-Fi <b id="net">–</b></span><span>BLE <b id="ble">–</b></span><span>CAN <b id="can">–</b></span><span>Reset <b id="rst">–</b></span><span class="sp"></span><span id="ver"></span><a href="/can">sniffer</a><a href="/update">update</a><button id="rb">raw</button></div>
+<div id="s"><span>Wi-Fi <b id="net">–</b></span><span>Phone <b id="ph">–</b></span><span>CAN <b id="can">–</b></span><span>Reset <b id="rst">–</b></span><span class="sp"></span><span id="ver"></span><a href="/can">sniffer</a><a href="/update">update</a><button id="rb">raw</button></div>
 <script>
 const NAMES={speed:"Speed",rpm:"RPM",coolant:"Coolant",outside:"Outside",battery:"Battery",fuel:"Fuel",range:"Range"};
 const STALE=3000,g=document.getElementById("g"),cards={};
@@ -53,7 +53,7 @@ show(f.k,txt,f.u,stale,"0x"+f.id+": "+(f.raw||"no frame"));}
 if(!btnCard)btnCard=card("btn","Last button");
 show("btn",d.btn||"–","",d.btnAge<0||d.btnAge>10000,d.btnAge<0?"":(d.btnAge/1000).toFixed(1)+" s ago");
 document.getElementById("ver").textContent="v"+d.ver;const rs=document.getElementById("rst");rs.textContent=d.reset;rs.classList.toggle("bad",d.resetFault);const net=document.getElementById("net");net.textContent="connected";net.classList.remove("bad");
-const ble=document.getElementById("ble");ble.textContent=d.ble?"connected":"waiting";ble.classList.toggle("bad",!d.ble);
+const ph=document.getElementById("ph");ph.textContent=d.phone?"connected":"waiting";ph.classList.toggle("bad",!d.phone);
 const can=document.getElementById("can");const ca=d.canAge<0||d.canAge>2000;
 can.textContent=ca?"none":d.fps+"/s";can.classList.toggle("bad",ca);}
 let busy=false;
@@ -79,7 +79,8 @@ progress{width:100%;height:14px;margin-top:16px}#m{margin-top:12px;color:#aaa}</
 <a href="/">&larr; Dashboard</a>
 <h2>Firmware update</h2>
 <p>Running: <b id="cv">…</b></p>
-<p>Select <code>firmware.bin</code> (from <code>.pio/build/app_ble_esp32c3_mcp2515/</code>,
+<p>Select <code>firmware.bin</code> (from <code>.pio/build/app_a2dp_esp32/</code>, or
+<code>.pio/build/app_ble_esp32c3/</code> for the C3 build,
 e.g. via AirDrop or iCloud Drive). The board restarts when done.</p>
 <form id="f"><input type="file" id="fw" accept=".bin" required><br>
 <button type="submit" id="go">Upload</button></form>

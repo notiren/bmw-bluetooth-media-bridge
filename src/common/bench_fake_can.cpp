@@ -1,8 +1,9 @@
-// Bench test without a car (-DBENCH_FAKE_CAN=1): replaces the MCP2515 with
-// synthetic K-CAN frames, fed into the same queue as the real CAN task.
+// Bench test without a car (-DBENCH_FAKE_CAN=1): replaces the CAN transceiver
+// with synthetic K-CAN frames, fed into the same queue as the real CAN task.
+#include "bench_fake_can.h"
 #if BENCH_FAKE_CAN
 #include <Arduino.h>
-#include "../common/can_bus.h"
+#include "can_bus.h"
 
 void benchFakeCanTask(void *queue) {
     QueueHandle_t q = (QueueHandle_t)queue;
