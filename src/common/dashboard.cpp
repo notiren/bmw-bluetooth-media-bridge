@@ -61,14 +61,20 @@ void handleCanApi() {
     if (g_server.hasArg("reset")) g_sniff.clear();
     const uint32_t now = millis();
 
-    static const char *const kIntNames[] = {"none", "ok", "silent"};
     String j;
     j.reserve(64 + g_sniff.size() * 48);
     j += "{\"full\":";
     j += g_sniff.full() ? "true" : "false";
-    j += ",\"int\":\"";
-    j += kIntNames[(uint8_t)canIntStatus()];
-    j += "\",\"ids\":[";
+    CanStatus st;
+    if (canGetStatus(st)) {
+        j += ",\"bus\":[";
+        j += st.running ? "1," : "0,";
+        j += st.busErrors;
+        j += ',';
+        j += st.missed;
+        j += ']';
+    }
+    j += ",\"ids\":[";
     char buf[96];
     for (uint16_t i = 0; i < g_sniff.size(); ++i) {
         const CanIdEntry &e = g_sniff[i];

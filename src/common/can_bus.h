@@ -1,9 +1,8 @@
 #pragma once
 #include <Arduino.h>
 
-// Thin CAN abstraction over either the ESP32 built-in TWAI controller
-// (default, needs a 3.3 V transceiver such as SN65HVD230) or an MCP2515 module
-// (build flag CAN_BACKEND_MCP2515=1).
+// Thin CAN wrapper over the ESP32 built-in TWAI controller (needs a 3.3 V
+// transceiver such as SN65HVD230).
 //
 // The bus is ALWAYS opened in listen-only mode: the node never transmits and
 // never ACKs, so it cannot disturb the vehicle network.
@@ -21,7 +20,11 @@ bool canBegin(uint32_t bitrate);
 bool canRead(CanFrame &frame, uint32_t timeoutMs);
 const char *canBackendName();
 
-// MCP2515 INT wire check: None = no INT pin configured (TWAI or polling),
-// Ok = interrupts seen, Silent = no interrupt yet (unwired: polling instead).
-enum class CanInt : uint8_t { None, Ok, Silent };
-CanInt canIntStatus();
+// Controller health for the dashboard. Bus errors climbing usually mean a
+// wrong bitrate or swapped CANH/CANL; missed = RX queue overflowed.
+struct CanStatus {
+    bool running;
+    uint32_t busErrors;
+    uint32_t missed;
+};
+bool canGetStatus(CanStatus &out);

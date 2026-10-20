@@ -116,9 +116,8 @@ body{background:#000;color:#ddd;font-family:-apple-system,system-ui,sans-serif;p
 #t input{width:90px;font-family:ui-monospace,Menlo,monospace}
 #t button.on{background:#2a4a7a;color:#fff}
 #info{color:#777}
-#int{font:12px ui-monospace,Menlo,monospace;margin-bottom:8px}
-#int b{border-radius:4px;padding:1px 6px;color:#fff;font-weight:600}
-#int b.ok{background:#1f6a33}#int b.bad{background:#8a2020}#int b.wait{background:#444}
+#bus{font:12px ui-monospace,Menlo,monospace;color:#777;margin-bottom:8px}
+#bus .bad{color:#e55}
 table{width:100%;border-collapse:collapse;font:13px ui-monospace,Menlo,monospace}
 th{position:sticky;top:0;background:#000;color:#777;font-weight:400;text-align:left;padding:4px 6px}
 td{padding:3px 6px;border-top:1px solid #151515;white-space:nowrap}
@@ -129,7 +128,7 @@ tr.old{opacity:.35}
 </style></head><body>
 <div id="t"><a href="/">&larr; Dash</a><input id="f" placeholder="ID filter" autocapitalize="characters" autocomplete="off">
 <button id="ch">changed only</button><button id="pa">pause</button><button id="rs">reset</button><span id="info"></span></div>
-<div id="int"></div>
+<div id="bus"></div>
 <table><thead><tr><th>ID</th><th>Data</th><th class="n">Hz</th><th class="n">Count</th></tr></thead><tbody id="b"></tbody></table>
 <script>
 const b=document.getElementById("b"),info=document.getElementById("info"),f=document.getElementById("f");
@@ -138,11 +137,6 @@ const tog=(id,fn)=>{const el=document.getElementById(id);el.onclick=()=>{el.clas
 tog("ch",()=>onlyCh=!onlyCh);
 tog("pa",()=>paused=!paused);
 document.getElementById("rs").onclick=()=>{reset=true;prev={};};
-const ie=document.getElementById("int");
-function showInt(s){
- const m={ok:['ok','INT OK'],silent:['bad','INT: no interrupts yet (check wire; polling instead)'],none:['wait','INT: not configured (polling)']}[s]||['wait','INT: ?'];
- ie.innerHTML='<b class="'+m[0]+'">'+m[1]+'</b>';
-}
 async function poll(){
  try{
   if(!paused||reset){
@@ -165,7 +159,8 @@ async function poll(){
    prevT=now;
    b.innerHTML=rows.join("");
    info.textContent=shown+" / "+d.ids.length+" IDs"+(d.full?" (table full)":"");
-   showInt(d.int);
+   if(d.bus){const[r,e,m]=d.bus,c=v=>v?' class="bad"':'';
+    document.getElementById("bus").innerHTML='CAN <span'+c(!r)+'>'+(r?'running':'stopped')+'</span> · bus errors <span'+c(e)+'>'+e+'</span> · missed <span'+c(m)+'>'+m+'</span>';}
   }
  }catch(e){info.textContent="offline";}
  setTimeout(poll,500);

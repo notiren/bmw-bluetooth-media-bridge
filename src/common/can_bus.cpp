@@ -1,120 +1,5 @@
 #include "can_bus.h"
 
-#if defined(CAN_BACKEND_MCP2515) && CAN_BACKEND_MCP2515
-
-// ---------------------------------------------------------------- MCP2515 ---
-#include <SPI.h>
-#include <mcp2515.h>
-
-#ifndef MCP2515_CRYSTAL_MHZ
-#define MCP2515_CRYSTAL_MHZ 8
-#endif
-// Slow SPI: plenty for 100/500 kbit/s CAN and tolerant of the resistor
-// divider on SO used with 5 V modules.
-#ifndef MCP2515_SPI_HZ
-#define MCP2515_SPI_HZ 1000000
-#endif
-
-// Optional INT pin (active low, through a divider on 5 V modules). With it,
-// canRead() sleeps until a frame arrives instead of polling SPI every 1 ms.
-#ifndef MCP2515_INT_PIN
-#define MCP2515_INT_PIN -1
-#endif
-
-static MCP2515 *s_mcp = nullptr;
-
-#if MCP2515_INT_PIN >= 0
-static SemaphoreHandle_t s_intSem = nullptr;
-static volatile bool s_irqSeen = false;
-
-static void IRAM_ATTR onMcpInt() {
-    s_irqSeen = true;
-    BaseType_t woken = pdFALSE;
-    xSemaphoreGiveFromISR(s_intSem, &woken);
-    if (woken) portYIELD_FROM_ISR();
-}
-#endif
-
-static bool mapBitrate(uint32_t bitrate, CAN_SPEED &out) {
-    switch (bitrate) {
-        case 100000: out = CAN_100KBPS; return true;
-        case 125000: out = CAN_125KBPS; return true;
-        case 250000: out = CAN_250KBPS; return true;
-        case 500000: out = CAN_500KBPS; return true;
-        default: return false;
-    }
-}
-
-bool canBegin(uint32_t bitrate) {
-    CAN_SPEED speed;
-    if (!mapBitrate(bitrate, speed)) return false;
-    const CAN_CLOCK clock = (MCP2515_CRYSTAL_MHZ == 16) ? MCP_16MHZ : MCP_8MHZ;
-
-    if (!s_mcp) {
-        // Begin SPI with explicit pins first; the library's own SPI.begin()
-        // is then a no-op on ESP32.
-        SPI.begin(MCP2515_SCK_PIN, MCP2515_MISO_PIN, MCP2515_MOSI_PIN, MCP2515_CS_PIN);
-        s_mcp = new MCP2515(MCP2515_CS_PIN, MCP2515_SPI_HZ);
-    }
-    if (s_mcp->reset() != MCP2515::ERROR_OK) return false;
-    if (s_mcp->setBitrate(speed, clock) != MCP2515::ERROR_OK) return false;
-    if (s_mcp->setListenOnlyMode() != MCP2515::ERROR_OK) return false;
-#if MCP2515_INT_PIN >= 0
-    if (!s_intSem) {
-        s_intSem = xSemaphoreCreateBinary();
-        pinMode(MCP2515_INT_PIN, INPUT_PULLUP);  // pull-up: harmless if INT isn't wired
-        attachInterrupt(digitalPinToInterrupt(MCP2515_INT_PIN), onMcpInt, FALLING);
-    }
-#endif
-    return true;
-}
-
-bool canRead(CanFrame &frame, uint32_t timeoutMs) {
-    if (!s_mcp) return false;
-    const uint32_t start = millis();
-    struct can_frame f;
-    do {
-        if (s_mcp->readMessage(&f) == MCP2515::ERROR_OK) {
-            frame.extended = f.can_id & CAN_EFF_FLAG;
-            frame.rtr = f.can_id & CAN_RTR_FLAG;
-            frame.id = f.can_id & (frame.extended ? CAN_EFF_MASK : CAN_SFF_MASK);
-            frame.dlc = f.can_dlc > 8 ? 8 : f.can_dlc;
-            memcpy(frame.data, f.data, frame.dlc);
-            return true;
-        }
-#if MCP2515_INT_PIN >= 0
-        // INT low without a frame: error flags; clear them so INT can fire again.
-        if (digitalRead(MCP2515_INT_PIN) == LOW &&
-            (s_mcp->getInterrupts() & (MCP2515::CANINTF_ERRIF | MCP2515::CANINTF_MERRF))) {
-            s_mcp->clearERRIF();
-            s_mcp->clearMERR();
-        }
-        const uint32_t elapsed = millis() - start;
-        if (elapsed >= timeoutMs) return false;
-        // Wait for INT; the cap keeps a slow poll going if an edge is missed.
-        const uint32_t waitMs = timeoutMs - elapsed < 10 ? timeoutMs - elapsed : 10;
-        xSemaphoreTake(s_intSem, pdMS_TO_TICKS(waitMs));
-    } while (true);
-#else
-        if (timeoutMs) delay(1);
-    } while (millis() - start < timeoutMs);
-    return false;
-#endif
-}
-
-const char *canBackendName() { return "MCP2515"; }
-
-CanInt canIntStatus() {
-#if MCP2515_INT_PIN >= 0
-    return s_irqSeen ? CanInt::Ok : CanInt::Silent;
-#else
-    return CanInt::None;
-#endif
-}
-
-#else
-
-// ------------------------------------------------------------------- TWAI ---
 #include "driver/twai.h"
 
 static bool s_installed = false;
@@ -154,6 +39,11 @@ bool canRead(CanFrame &frame, uint32_t timeoutMs) {
 
 const char *canBackendName() { return "TWAI"; }
 
-CanInt canIntStatus() { return CanInt::None; }
-
-#endif
+bool canGetStatus(CanStatus &out) {
+    twai_status_info_t s;
+    if (!s_installed || twai_get_status_info(&s) != ESP_OK) return false;
+    out.running = s.state == TWAI_STATE_RUNNING;
+    out.busErrors = s.bus_error_count;
+    out.missed = s.rx_missed_count + s.rx_overrun_count;
+    return true;
+}
